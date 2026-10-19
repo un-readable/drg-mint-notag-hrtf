@@ -36,38 +36,60 @@ jobs:
           UP="https://api.github.com/repos/Strappazzon/drg-mint-notag/releases"
           AUTH="Authorization: Bearer $GH_TOKEN"
 
-          RESPONSE=$(curl -s -w "\n%{http_code}" -H "$AUTH" "$UP/latest")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -1)
+          HTTP_CODE=$(curl -sS -o "$RUNNER_TEMP/latest.json" \
+            -w "%{http_code}" -H "$AUTH" \
+            -H "Accept: application/vnd.github+json" "$UP/latest") || {
+              echo "ERROR: request to GitHub releases API failed"
+              exit 1
+          }
+
           if [ "$HTTP_CODE" != "200" ]; then
-            echo "GitHub API returned $HTTP_CODE, skipping build"
-            echo "tags=[]" >> $GITHUB_OUTPUT
-            echo "newest=" >> $GITHUB_OUTPUT
-            exit 0
+            echo "GitHub latest-release API returned HTTP $HTTP_CODE"
+            cat "$RUNNER_TEMP/latest.json"
+            exit 1
           fi
-          NEWEST=$(echo "$BODY" | jq -r '.tag_name')
+
+          if ! jq -e 'type == "object" and (.tag_name | type == "string")' \
+            "$RUNNER_TEMP/latest.json" >/dev/null; then
+            echo "ERROR: latest-release API returned invalid JSON or no tag_name"
+            cat "$RUNNER_TEMP/latest.json"
+            exit 1
+          fi
+
+          NEWEST=$(jq -r '.tag_name' "$RUNNER_TEMP/latest.json")
 
           if [ -n "$INPUT_TAG" ]; then
             TAGS=$(jq -cn --arg t "$INPUT_TAG" '[$t]')
           elif [ "$BACKFILL" = "true" ]; then
-            RESPONSE=$(curl -sS -w "\n%{http_code}" -H "$AUTH" "$UP?per_page=100")
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
-            BODY=$(echo "$RESPONSE" | sed '$d')
+            HTTP_CODE=$(curl -sS -o "$RUNNER_TEMP/releases.json" \
+              -w "%{http_code}" -H "$AUTH" \
+              -H "Accept: application/vnd.github+json" \
+              "$UP?per_page=100") || {
+                echo "ERROR: request for release list failed"
+                exit 1
+            }
 
             if [ "$HTTP_CODE" != "200" ]; then
               echo "GitHub releases API returned HTTP $HTTP_CODE"
-              echo "$BODY"
+              cat "$RUNNER_TEMP/releases.json"
               exit 1
             fi
 
-            TAGS=$(echo "$BODY" | jq -ec \
-              '[.[] | select(.draft == false)] | sort_by(.published_at) | map(.tag_name)') || {
-                echo "ERROR: failed to parse GitHub releases response"
-                exit 1
-              }
+            if ! jq -e 'type == "array"' \
+              "$RUNNER_TEMP/releases.json" >/dev/null; then
+              echo "ERROR: releases API did not return a JSON array"
+              cat "$RUNNER_TEMP/releases.json"
+              exit 1
+            fi
+
+            TAGS=$(jq -c \
+              '[.[] | select(.draft == false)] | sort_by(.published_at) | map(.tag_name)' \
+              "$RUNNER_TEMP/releases.json")
           else
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
+            CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+              -H "$AUTH" \
               "https://api.github.com/repos/${{ github.repository }}/releases/tags/$NEWEST")
+
             if [ "$CODE" = "200" ]; then
               TAGS='[]'
             else
@@ -77,8 +99,8 @@ jobs:
 
           echo "Newest upstream: $NEWEST"
           echo "Building: $TAGS"
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
-          echo "newest=$NEWEST" >> $GITHUB_OUTPUT
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "newest=$NEWEST" >> "$GITHUB_OUTPUT"
 
   build:
     needs: check-and-build
