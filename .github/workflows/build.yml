@@ -50,8 +50,21 @@ jobs:
           if [ -n "$INPUT_TAG" ]; then
             TAGS=$(jq -cn --arg t "$INPUT_TAG" '[$t]')
           elif [ "$BACKFILL" = "true" ]; then
-            TAGS=$(curl -s -H "$AUTH" "$UP?per_page=100" \
-              | jq -c '[.[] | select(.draft == false)] | sort_by(.published_at) | map(.tag_name)')
+            RESPONSE=$(curl -sS -w "\n%{http_code}" -H "$AUTH" "$UP?per_page=100")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "GitHub releases API returned HTTP $HTTP_CODE"
+              echo "$BODY"
+              exit 1
+            fi
+
+            TAGS=$(echo "$BODY" | jq -ec \
+              '[.[] | select(.draft == false)] | sort_by(.published_at) | map(.tag_name)') || {
+                echo "ERROR: failed to parse GitHub releases response"
+                exit 1
+              }
           else
             CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "$AUTH" \
               "https://api.github.com/repos/${{ github.repository }}/releases/tags/$NEWEST")
