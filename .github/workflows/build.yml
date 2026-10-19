@@ -182,38 +182,38 @@ jobs:
           src = p.read_text()
 
           old_exports = '''// x3daudio1_7.dll
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-extern "system" fn X3DAudioCalculate() {}
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-extern "system" fn X3DAudioInitialize() {}
-
-// d3d9.dll
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-extern "system" fn D3DPERF_EndEvent() {}
-#[no_mangle]
-#[allow(non_snake_case, unused_variables)]
-extern "system" fn D3DPERF_BeginEvent() {}'''
+          #[no_mangle]
+          #[allow(non_snake_case, unused_variables)]
+          extern "system" fn X3DAudioCalculate() {}
+          #[no_mangle]
+          #[allow(non_snake_case, unused_variables)]
+          extern "system" fn X3DAudioInitialize() {}
+          
+          // d3d9.dll
+          #[no_mangle]
+          #[allow(non_snake_case, unused_variables)]
+          extern "system" fn D3DPERF_EndEvent() {}
+          #[no_mangle]
+          #[allow(non_snake_case, unused_variables)]
+          extern "system" fn D3DPERF_BeginEvent() {}'''
 
           new_exports = '''// d3d9.dll - full export list so the proxy works correctly
-// DRG uses DX11/DX12 so these are safe empty stubs
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DShaderValidatorCreate9() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn PSGPError() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn PSGPSampleTexture() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_BeginEvent() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_EndEvent() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_GetStatus() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_QueryRepeatFrame() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetMarker() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetOptions() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetRegion() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn DebugSetLevel() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn DebugSetMute() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3D9EnableMaximizedWindowedModeShim() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DCreate9() {}
-#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DCreate9Ex() {}'''
+          // DRG uses DX11/DX12 so these are safe empty stubs
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DShaderValidatorCreate9() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn PSGPError() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn PSGPSampleTexture() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_BeginEvent() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_EndEvent() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_GetStatus() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_QueryRepeatFrame() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetMarker() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetOptions() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetRegion() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn DebugSetLevel() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn DebugSetMute() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3D9EnableMaximizedWindowedModeShim() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DCreate9() {}
+          #[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DCreate9Ex() {}'''
 
           if old_exports in src:
               src = src.replace(old_exports, new_exports)
@@ -236,31 +236,31 @@ extern "system" fn D3DPERF_BeginEvent() {}'''
 
           # The old single pak path lookup - matches both the original and our already-patched version
           old_pak = '''    let pak_path = std::env::current_exe()
-        .ok()
-        .as_deref()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .map(|p| p.join("Content/Paks/FSD-WindowsNoEditor099_P.pak"))
-        .context("could not determine pak path")?;
-    if !pak_path.exists() {
-        return Ok(());
-    }'''
+                  .ok()
+                  .as_deref()
+                  .and_then(Path::parent)
+                  .and_then(Path::parent)
+                  .and_then(Path::parent)
+                  .map(|p| p.join("Content/Paks/FSD-WindowsNoEditor099_P.pak"))
+                  .context("could not determine pak path")?;
+              if !pak_path.exists() {
+                  return Ok(());
+              }'''
 
           new_pak = '''    // Try multiple pak names in priority order
-    let pak_path = ["FSD-WindowsNoEditor099_P.pak", "FSD-WindowsNoEditor099.pak", "mods_P.pak"]
-        .iter()
-        .find_map(|name| {
-            std::env::current_exe()
-                .ok()
-                .as_deref()
-                .and_then(Path::parent)
-                .and_then(Path::parent)
-                .and_then(Path::parent)
-                .map(|p| p.join(format!("Content/Paks/{}", name)))
-                .filter(|p| p.exists())
-        })
-        .context("could not find any mod pak (tried FSD-WindowsNoEditor099_P.pak, FSD-WindowsNoEditor099.pak, mods_P.pak)")?;'''
+              let pak_path = ["FSD-WindowsNoEditor099_P.pak", "FSD-WindowsNoEditor099.pak", "mods_P.pak"]
+                  .iter()
+                  .find_map(|name| {
+                      std::env::current_exe()
+                          .ok()
+                          .as_deref()
+                          .and_then(Path::parent)
+                          .and_then(Path::parent)
+                          .and_then(Path::parent)
+                          .map(|p| p.join(format!("Content/Paks/{}", name)))
+                          .filter(|p| p.exists())
+                  })
+                  .context("could not find any mod pak (tried FSD-WindowsNoEditor099_P.pak, FSD-WindowsNoEditor099.pak, mods_P.pak)")?;'''
 
           if old_pak in src:
               src = src.replace(old_pak, new_pak)
