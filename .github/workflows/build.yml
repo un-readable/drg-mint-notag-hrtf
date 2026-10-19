@@ -35,7 +35,17 @@ jobs:
         run: |
           UP="https://api.github.com/repos/Strappazzon/drg-mint-notag/releases"
           AUTH="Authorization: Bearer $GH_TOKEN"
-          NEWEST=$(curl -s -H "$AUTH" "$UP/latest" | jq -r '.tag_name')
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -H "$AUTH" "$UP/latest")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "GitHub API returned $HTTP_CODE, skipping build"
+            echo "tags=[]" >> $GITHUB_OUTPUT
+            echo "newest=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          NEWEST=$(echo "$BODY" | jq -r '.tag_name')
 
           if [ -n "$INPUT_TAG" ]; then
             TAGS=$(jq -cn --arg t "$INPUT_TAG" '[$t]')
@@ -125,9 +135,10 @@ jobs:
           UPSTREAM_VERSION="${{ matrix.tag }}"
           VERSION="${UPSTREAM_VERSION#v}"
 
-          # Patch 1: replace pak filename
+          # Patch 1: replace pak filename in source code and config
+          # Use _P suffix for correct UE4 mod pak load priority
           find . -type f \( -name "*.rs" -o -name "*.toml" -o -name "*.md" \) \
-            -exec sed -i 's/mods_P\.pak/FSD-WindowsNoEditor099.pak/g' {} +
+            -exec sed -i 's/mods_P\.pak/FSD-WindowsNoEditor099_P.pak/g' {} +
 
           # Patch 2: replace all github.com repo links
           find . -type f \( -name "*.rs" -o -name "*.toml" -o -name "*.md" \) \
@@ -138,10 +149,6 @@ jobs:
             -exec sed -i 's|api.github.com/repos/Strappazzon/drg-mint-notag|api.github.com/repos/un-readable/drg-mint-notag-bypass|g' {} +
 
           # Patch 4: toolchain
-          # Every upstream tag pins nightly-2023-08-18 in its own rust-toolchain.toml, and
-          # upstream's CI builds with it. Use that unless an override was typed in.
-          # NOTE: don't name this env var "TOOLCHAIN" - Windows env names are case-insensitive
-          # and it would clobber the "toolchain" input of dtolnay/rust-toolchain.
           if [ -n "$INPUT_TOOLCHAIN" ]; then
             CHAN="$INPUT_TOOLCHAIN"
             printf '[toolchain]\nchannel = "%s"\n' "$CHAN" > rust-toolchain.toml
@@ -160,15 +167,117 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" Cargo.toml
           echo "Version set to: $VERSION"
 
-          echo "Verifying..."
-          grep -r "Strappazzon" --include="*.rs" . && echo "WARNING: Strappazzon refs remain" || echo "All clear"
+          # Patch 6: switch hook DLL from x3daudio1_7.dll to d3d9.dll
+          # This frees up x3daudio for use by other mods (e.g. x3daudio HRTF)
+          # Steam and Xbox both use d3d9.dll as the injection vector
+          sed -i 's/Self::Steam => "x3daudio1_7\.dll"/Self::Steam => "d3d9.dll"/' \
+            mint_lib/src/lib.rs
+
+          # Patch 7: replace the stub exports in hook/src/lib.rs
+          # Remove the x3daudio stubs and replace with full d3d9 export list
+          # The game doesn't use DX9 so these are safe empty stubs
+          python3 - <<'PYEOF'
+          import re, pathlib
+          p = pathlib.Path("hook/src/lib.rs")
+          src = p.read_text()
+
+          old_exports = '''// x3daudio1_7.dll
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+extern "system" fn X3DAudioCalculate() {}
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+extern "system" fn X3DAudioInitialize() {}
+
+// d3d9.dll
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+extern "system" fn D3DPERF_EndEvent() {}
+#[no_mangle]
+#[allow(non_snake_case, unused_variables)]
+extern "system" fn D3DPERF_BeginEvent() {}'''
+
+          new_exports = '''// d3d9.dll - full export list so the proxy works correctly
+// DRG uses DX11/DX12 so these are safe empty stubs
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DShaderValidatorCreate9() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn PSGPError() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn PSGPSampleTexture() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_BeginEvent() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_EndEvent() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_GetStatus() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_QueryRepeatFrame() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetMarker() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetOptions() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn D3DPERF_SetRegion() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn DebugSetLevel() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn DebugSetMute() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3D9EnableMaximizedWindowedModeShim() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DCreate9() {}
+#[no_mangle] #[allow(non_snake_case, unused_variables)] extern "system" fn Direct3DCreate9Ex() {}'''
+
+          if old_exports in src:
+              src = src.replace(old_exports, new_exports)
+              p.write_text(src)
+              print("hook/src/lib.rs: replaced x3daudio+d3d9 stubs with full d3d9 exports")
+          else:
+              print("WARNING: could not find expected export block in hook/src/lib.rs - it may have changed upstream")
+              print("Attempting fallback: removing x3daudio exports only")
+              src = re.sub(
+                  r'// x3daudio1_7\.dll\n(?:#\[.*?\]\n)*extern "system" fn X3DAudioCalculate\(\) \{\}\n(?:#\[.*?\]\n)*extern "system" fn X3DAudioInitialize\(\) \{\}\n\n',
+                  '', src)
+              p.write_text(src)
+          PYEOF
+
+          # Patch 8: update hook pak path to try multiple pak names at runtime
+          python3 - <<'PYEOF'
+          import pathlib
+          p = pathlib.Path("hook/src/lib.rs")
+          src = p.read_text()
+
+          # The old single pak path lookup - matches both the original and our already-patched version
+          old_pak = '''    let pak_path = std::env::current_exe()
+        .ok()
+        .as_deref()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .map(|p| p.join("Content/Paks/FSD-WindowsNoEditor099_P.pak"))
+        .context("could not determine pak path")?;
+    if !pak_path.exists() {
+        return Ok(());
+    }'''
+
+          new_pak = '''    // Try multiple pak names in priority order
+    let pak_path = ["FSD-WindowsNoEditor099_P.pak", "FSD-WindowsNoEditor099.pak", "mods_P.pak"]
+        .iter()
+        .find_map(|name| {
+            std::env::current_exe()
+                .ok()
+                .as_deref()
+                .and_then(Path::parent)
+                .and_then(Path::parent)
+                .and_then(Path::parent)
+                .map(|p| p.join(format!("Content/Paks/{}", name)))
+                .filter(|p| p.exists())
+        })
+        .context("could not find any mod pak (tried FSD-WindowsNoEditor099_P.pak, FSD-WindowsNoEditor099.pak, mods_P.pak)")?;'''
+
+          if old_pak in src:
+              src = src.replace(old_pak, new_pak)
+              p.write_text(src)
+              print("hook/src/lib.rs: updated pak path to try multiple names")
+          else:
+              print("WARNING: could not find expected pak path block - structure may have changed")
+          PYEOF
+
+          echo "Verifying patches..."
+          grep -r "Strappazzon" --include="*.rs" . && echo "WARNING: Strappazzon refs remain" || echo "repo URLs: OK"
+          grep -r "x3daudio1_7" --include="*.rs" . && echo "WARNING: x3daudio refs remain" || echo "x3daudio: OK"
+          grep "hook_dll_name" mint_lib/src/lib.rs -A5 | grep -E "Steam|Xbox"
 
       - name: Repair stale Cargo.lock (v0.2.11 / v0.2.12)
         shell: bash
         run: |
-          # These tags' locks have no entry for the winresource build-dependency (v0.2.12 also
-          # lacks ehttp/jpeg-decoder), so cargo re-resolves and pulls in crates far too new for
-          # the 2023 nightly. The v0.2.13 lock is the same dependency set with those entries added.
           if ! grep -q '^name = "winresource"$' Cargo.lock; then
             echo "Cargo.lock has no winresource entry - seeding it from upstream v0.2.13"
             curl -sSLf -o Cargo.lock \
@@ -221,7 +330,7 @@ jobs:
           done
           ls -la dist
 
-      - name: Finalize Windows package (add DLL, rename old tags, max compression)
+      - name: Add Oodle DLL to Windows zip
         if: runner.os == 'Windows'
         shell: bash
         run: |
@@ -231,51 +340,56 @@ jobs:
           fi
 
           ZIP=$(ls dist/*windows-msvc*.zip | head -n1)
-          ZABS="$(pwd)/$ZIP"
-          BEFORE=$(stat -c %s "$ZABS")
-          echo "cargo-dist zip: $ZIP ($BEFORE bytes)"
+          echo "Zip: $ZIP"
 
-          # unpack what cargo-dist produced
-          W="$RUNNER_TEMP/winpkg"; rm -rf "$W"; mkdir -p "$W"
-          7z x "$ZABS" -o"$W" -y > /dev/null
-
-          # drop the Oodle DLL next to the exe (drg_mod_integration.exe before v0.2.16, mint.exe after)
-          EXE=$(find "$W" -type f -iname '*.exe' | head -n1)
+          EXE=$(7z l -slt "$ZIP" | tr -d '\r' | sed -n 's/^Path = //p' | grep -i '\.exe$' | head -n1)
           if [ -z "$EXE" ]; then
-            echo "ERROR: no .exe inside $ZIP"
-            7z l "$ZABS"
+            echo "ERROR: no .exe found inside $ZIP"
+            7z l "$ZIP"
             exit 1
           fi
-          cp oo2core_9_win64.dll "$(dirname "$EXE")/"
+          DIR=$(dirname "$EXE")
+          echo "Exe is at: $EXE (adding the DLL next to it)"
 
+          mkdir -p "$RUNNER_TEMP/zipfix/$DIR"
+          cp oo2core_9_win64.dll "$RUNNER_TEMP/zipfix/$DIR/"
+          ZIPABS="$(pwd)/$ZIP"
+          (cd "$RUNNER_TEMP/zipfix" && 7z a "$ZIPABS" "$DIR/oo2core_9_win64.dll")
+
+          echo "Final contents:"
+          7z l "$ZIP"
+
+      - name: Rename Windows package like upstream (v0.2.11 - v0.2.15)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
           case "${{ matrix.tag }}" in
-            v0.2.11|v0.2.12|v0.2.13|v0.2.14|v0.2.15)
-              # upstream published these as mint-notag-windows-x86_64.zip with mint-notag.exe at the root
-              OUT="$RUNNER_TEMP/winout"; rm -rf "$OUT"; mkdir -p "$OUT"
-              cp "$EXE" "$OUT/mint-notag.exe"
-              find "$W" -type f ! -iname '*.exe' -exec cp {} "$OUT/" \;
-              DEST="$(pwd)/dist/mint-notag-windows-x86_64.zip"
-              ;;
-            *)
-              # v0.2.16+ keep cargo-dist's name and layout
-              OUT="$W"
-              DEST="$ZABS"
-              ;;
+            v0.2.11|v0.2.12|v0.2.13|v0.2.14|v0.2.15) ;;
+            *) echo "Keeping cargo-dist asset names for ${{ matrix.tag }}"; exit 0 ;;
           esac
 
-          # rebuild the zip from scratch at maximum deflate (7z's append mode doesn't recompress)
-          rm -f "$ZABS"
-          (cd "$OUT" && 7z a -tzip -mx=9 -mfb=258 -mpass=15 "$DEST" ./* > /dev/null)
+          ZIP=$(ls dist/*windows-msvc*.zip | head -n1)
+          DEST="$(pwd)/dist/mint-notag-windows-x86_64.zip"
+          W="$RUNNER_TEMP/winpkg"; OUT="$RUNNER_TEMP/winout"
+          rm -rf "$W" "$OUT"; mkdir -p "$W" "$OUT"
 
-          echo "Size: $BEFORE -> $(stat -c %s "$DEST") bytes"
+          7z x "$ZIP" -o"$W" -y > /dev/null
+          EXE=$(find "$W" -type f -iname '*.exe' | head -n1)
+          if [ -z "$EXE" ]; then echo "ERROR: no .exe in $ZIP"; exit 1; fi
+
+          cp "$EXE" "$OUT/mint-notag.exe"
+          find "$W" -type f ! -iname '*.exe' -exec cp {} "$OUT/" \;
+
+          (cd "$OUT" && 7z a -tzip "$DEST" ./* > /dev/null)
+          rm -f "$ZIP"
+
+          echo "Final contents:"
           7z l "$DEST"
 
       - name: Rename Linux package like upstream (v0.2.11 - v0.2.15)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          # v0.2.11 was published as mint-notag-linux-x86_64.xz,
-          # v0.2.12 - v0.2.15 as mint-notag-linux-x86_64.tar.xz (binary named mint-notag).
           TAG="${{ matrix.tag }}"
           case "$TAG" in
             v0.2.11|v0.2.12|v0.2.13|v0.2.14|v0.2.15) ;;
@@ -296,7 +410,6 @@ jobs:
             *) echo "ERROR: unsupported archive type: $ARCH"; exit 1 ;;
           esac
 
-          # the binary is by far the biggest file in the archive
           BIN=$(find "$L" -type f -printf '%s %p\n' | sort -rn | head -n1 | cut -d' ' -f2-)
           echo "Binary: $BIN"
 
@@ -306,7 +419,6 @@ jobs:
           if [ "$TAG" = "v0.2.11" ]; then
             xz -9 -c "$OUT/mint-notag" > dist/mint-notag-linux-x86_64.xz
           else
-            # keep the other files cargo-dist packaged (license, changelog, ...) next to the binary
             find "$L" -type f ! -path "$BIN" -exec cp {} "$OUT/" \;
             tar -C "$OUT" -cf - . | xz -9 > dist/mint-notag-linux-x86_64.tar.xz
           fi
@@ -319,12 +431,16 @@ jobs:
         run: |
           TAG="${{ matrix.tag }}"
           curl -s "https://api.github.com/repos/Strappazzon/drg-mint-notag/releases/tags/$TAG" \
-            | jq -r '.body // ""' > "$RUNNER_TEMP/notes.md"
+            | jq -r '.body // ""' \
+            | tr -s '\n' \
+            | sed 's/\r//' > "$RUNNER_TEMP/notes.md"
           cat >> "$RUNNER_TEMP/notes.md" <<EOF
 
           ---
           > **Patched build** — auto-built from upstream [$TAG](https://github.com/Strappazzon/drg-mint-notag/releases/tag/$TAG)
-          > Patch applied: \`mods_P.pak\` → \`FSD-WindowsNoEditor099.pak\`
+          > Patches applied:
+          > - \`mods_P.pak\` → \`FSD-WindowsNoEditor099_P.pak\` (also supports \`FSD-WindowsNoEditor099.pak\` and \`mods_P.pak\`)
+          > - Hook DLL: \`x3daudio1_7.dll\` → \`d3d9.dll\` (frees x3daudio for HRTF mods)
           EOF
 
       - name: Create GitHub Release
