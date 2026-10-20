@@ -229,89 +229,19 @@ jobs:
             else
               echo "Patch 6: x3daudio1_7.dll not found (already changed upstream?)"
             fi
-
+            
             # Patch 7: replace hook/src/lib.rs export stubs with full d3d9 list
+            # peak slop ;-;
             if grep -q 'X3DAudioCalculate' hook/src/lib.rs; then
-              sed -i \
-                '/^\/\/ x3daudio1_7\.dll$/,/^extern "system" fn X3DAudioInitialize/{
-                  /^extern "system" fn X3DAudioInitialize/d
-                  d
-                }' hook/src/lib.rs
-              sed -i \
-                '/^extern "system" fn D3DPERF_BeginEvent/a\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn D3DPERF_GetStatus() -> u32 { 0 }\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn D3DPERF_QueryRepeatFrame() -> i32 { 0 }\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn D3DPERF_SetMarker() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn D3DPERF_SetOptions() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn D3DPERF_SetRegion() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn DebugSetLevel() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn DebugSetMute() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn Direct3D9EnableMaximizedWindowedModeShim() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn Direct3DCreate9() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn Direct3DCreate9Ex() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn Direct3DShaderValidatorCreate9() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn PSGPError() {}\
-#[no_mangle]\
-#[allow(non_snake_case, unused_variables)]\
-extern "system" fn PSGPSampleTexture() {}' hook/src/lib.rs
-              echo "Patch 7: hook exports updated to full d3d9 list"
+              echo aW1wb3J0IHBhdGhsaWIKcCA9IHBhdGhsaWIuUGF0aCgnaG9vay9zcmMvbGliLnJzJykKc3JjID0gcC5yZWFkX3RleHQoKQpvbGQgPSAnLy8geDNkYXVkaW8xXzcuZGxsCiNbbm9fbWFuZ2xlXQojW2FsbG93KG5vbl9zbmFrZV9jYXNlLCB1bnVzZWRfdmFyaWFibGVzKV0KZXh0ZXJuICJzeXN0ZW0iIGZuIFgzREF1ZGlvQ2FsY3VsYXRlKCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gWDNEQXVkaW9Jbml0aWFsaXplKCkge30KJwpzcmMgPSBzcmMucmVwbGFjZShvbGQsICcnKQpleHRyYSA9ICcvLyBkM2Q5LmRsbCAtIGZ1bGwgZXhwb3J0IGxpc3QKI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRDNEUEVSRl9HZXRTdGF0dXMoKSAtPiB1MzIgeyAwIH0KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRDNEUEVSRl9RdWVyeVJlcGVhdEZyYW1lKCkgLT4gaTMyIHsgMCB9CiNbbm9fbWFuZ2xlXQojW2FsbG93KG5vbl9zbmFrZV9jYXNlLCB1bnVzZWRfdmFyaWFibGVzKV0KZXh0ZXJuICJzeXN0ZW0iIGZuIEQzRFBFUkZfU2V0TWFya2VyKCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRDNEUEVSRl9TZXRPcHRpb25zKCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRDNEUEVSRl9TZXRSZWdpb24oKSB7fQojW25vX21hbmdsZV0KI1thbGxvdyhub25fc25ha2VfY2FzZSwgdW51c2VkX3ZhcmlhYmxlcyldCmV4dGVybiAic3lzdGVtIiBmbiBEZWJ1Z1NldExldmVsKCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRGVidWdTZXRNdXRlKCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRGlyZWN0M0Q5RW5hYmxlTWF4aW1pemVkV2luZG93ZWRNb2RlU2hpbSgpIHt9CiNbbm9fbWFuZ2xlXQojW2FsbG93KG5vbl9zbmFrZV9jYXNlLCB1bnVzZWRfdmFyaWFibGVzKV0KZXh0ZXJuICJzeXN0ZW0iIGZuIERpcmVjdDNEQ3JlYXRlOSgpIHt9CiNbbm9fbWFuZ2xlXQojW2FsbG93KG5vbl9zbmFrZV9jYXNlLCB1bnVzZWRfdmFyaWFibGVzKV0KZXh0ZXJuICJzeXN0ZW0iIGZuIERpcmVjdDNEQ3JlYXRlOUV4KCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gRGlyZWN0M0RTaGFkZXJWYWxpZGF0b3JDcmVhdGU5KCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gUFNHUEVycm9yKCkge30KI1tub19tYW5nbGVdCiNbYWxsb3cobm9uX3NuYWtlX2Nhc2UsIHVudXNlZF92YXJpYWJsZXMpXQpleHRlcm4gInN5c3RlbSIgZm4gUFNHUFNhbXBsZVRleHR1cmUoKSB7fQonCnNyYyA9IHNyYy5yZXBsYWNlKCcvLyBkM2Q5LmRsbAonLCBleHRyYSkKcC53cml0ZV90ZXh0KHNyYykKcHJpbnQoJ1BhdGNoIDc6IGhvb2sgZXhwb3J0cyB1cGRhdGVkIHRvIGZ1bGwgZDNkOSBsaXN0JykK | base64 -d | python3
             else
               echo "Patch 7: x3daudio exports not found (proxy_dll crate used - no action needed)"
             fi
 
             # Patch 8: multi-pak fallback in hook/src/lib.rs
+            # peak slop again
             if grep -q 'Content/Paks/' hook/src/lib.rs; then
-              python3 -c "
-import pathlib, re
-p = pathlib.Path('hook/src/lib.rs')
-src = p.read_text()
-old = re.search(
-    r'    let pak_path = std::env::current_exe\(\)\n'
-    r'        \.ok\(\)\n'
-    r'        \.as_deref\(\)\n'
-    r'        \.and_then\(Path::parent\)\n'
-    r'        \.and_then\(Path::parent\)\n'
-    r'        \.and_then\(Path::parent\)\n'
-    r'        \.map\(\|p\| p\.join\(\"Content/Paks/[^\"]+\"\)\)\n'
-    r'        \.context\(\"[^\"]+\"\)\?;\n'
-    r'    if !pak_path\.exists\(\) \{\n'
-    r'        return Ok\(\(\)\);\n'
-    r'    \}',
-    src
-)
-if old:
-    new = '    // Try multiple pak names in priority order\n    let pak_path = [\"FSD-WindowsNoEditor099_P.pak\", \"FSD-WindowsNoEditor099.pak\", \"mods_P.pak\"]\n        .iter()\n        .find_map(|name| {\n            std::env::current_exe()\n                .ok()\n                .as_deref()\n                .and_then(Path::parent)\n                .and_then(Path::parent)\n                .and_then(Path::parent)\n                .map(|p| p.join(format!(\"Content/Paks/{}\", name)))\n                .filter(|p| p.exists())\n        })\n        .context(\"could not find any mod pak (tried FSD-WindowsNoEditor099_P.pak, FSD-WindowsNoEditor099.pak, mods_P.pak)\")?;'
-    src = src[:old.start()] + new + src[old.end():]
-    p.write_text(src)
-    print('Patch 8: multi-pak fallback applied')
-else:
-    print('Patch 8: WARNING - could not find single-pak block (structure may have changed upstream)')
-"
-              PATCH_MULTIPAK=true
+              echo aW1wb3J0IHBhdGhsaWIsIHJlCnAgPSBwYXRobGliLlBhdGgoJ2hvb2svc3JjL2xpYi5ycycpCnNyYyA9IHAucmVhZF90ZXh0KCkKb2xkID0gcmUuc2VhcmNoKAogICAgcicgICAgbGV0IHBha19wYXRoID0gc3RkOjplbnY6OmN1cnJlbnRfZXhlXChcKQonCiAgICByJyAgICAgICAgXC5va1woXCkKJwogICAgcicgICAgICAgIFwuYXNfZGVyZWZcKFwpCicKICAgIHInICAgICAgICBcLmFuZF90aGVuXChQYXRoOjpwYXJlbnRcKQonCiAgICByJyAgICAgICAgXC5hbmRfdGhlblwoUGF0aDo6cGFyZW50XCkKJwogICAgcicgICAgICAgIFwuYW5kX3RoZW5cKFBhdGg6OnBhcmVudFwpCicKICAgIHInICAgICAgICBcLm1hcFwoXHxwXHwgcFwuam9pblwoIkNvbnRlbnQvUGFrcy9bXiJdKyJcKVwpCicKICAgIHInICAgICAgICBcLmNvbnRleHRcKCJbXiJdKyJcKVw/OwonCiAgICByJyAgICBpZiAhcGFrX3BhdGhcLmV4aXN0c1woXCkgXHsKJwogICAgcicgICAgICAgIHJldHVybiBPa1woXChcKVwpOwonCiAgICByJyAgICBcfScsCiAgICBzcmMKKQppZiBvbGQ6CiAgICBuZXcgPSAiIiIgICAgLy8gVHJ5IG11bHRpcGxlIHBhayBuYW1lcyBpbiBwcmlvcml0eSBvcmRlcgogICAgbGV0IHBha19wYXRoID0gWyJGU0QtV2luZG93c05vRWRpdG9yMDk5X1AucGFrIiwgIkZTRC1XaW5kb3dzTm9FZGl0b3IwOTkucGFrIiwgIm1vZHNfUC5wYWsiXQogICAgICAgIC5pdGVyKCkKICAgICAgICAuZmluZF9tYXAofG5hbWV8IHsKICAgICAgICAgICAgc3RkOjplbnY6OmN1cnJlbnRfZXhlKCkKICAgICAgICAgICAgICAgIC5vaygpCiAgICAgICAgICAgICAgICAuYXNfZGVyZWYoKQogICAgICAgICAgICAgICAgLmFuZF90aGVuKFBhdGg6OnBhcmVudCkKICAgICAgICAgICAgICAgIC5hbmRfdGhlbihQYXRoOjpwYXJlbnQpCiAgICAgICAgICAgICAgICAuYW5kX3RoZW4oUGF0aDo6cGFyZW50KQogICAgICAgICAgICAgICAgLm1hcCh8cHwgcC5qb2luKGZvcm1hdCEoIkNvbnRlbnQvUGFrcy97fSIsIG5hbWUpKSkKICAgICAgICAgICAgICAgIC5maWx0ZXIofHB8IHAuZXhpc3RzKCkpCiAgICAgICAgfSkKICAgICAgICAuY29udGV4dCgiY291bGQgbm90IGZpbmQgYW55IG1vZCBwYWsgKHRyaWVkIEZTRC1XaW5kb3dzTm9FZGl0b3IwOTlfUC5wYWssIEZTRC1XaW5kb3dzTm9FZGl0b3IwOTkucGFrLCBtb2RzX1AucGFrKSIpPzsiIiIKICAgIHNyYyA9IHNyY1s6b2xkLnN0YXJ0KCldICsgbmV3ICsgc3JjW29sZC5lbmQoKTpdCiAgICBwLndyaXRlX3RleHQoc3JjKQogICAgcHJpbnQoJ1BhdGNoIDg6IG11bHRpLXBhayBmYWxsYmFjayBhcHBsaWVkJykKZWxzZToKICAgIHByaW50KCdQYXRjaCA4OiBXQVJOSU5HIC0gY291bGQgbm90IGZpbmQgc2luZ2xlLXBhayBibG9jayAoc3RydWN0dXJlIG1heSBoYXZlIGNoYW5nZWQgdXBzdHJlYW0pJykK | base64 -d | python3
             else
               echo "Patch 8: no Content/Paks line found - skipping"
             fi
