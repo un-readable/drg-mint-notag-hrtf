@@ -182,13 +182,13 @@ jobs:
           # ── Patch 2: github.com repo links ────────────────────────────────
           find . -type f \( -name "*.rs" -o -name "*.toml" -o -name "*.md" \) \
             -exec sed -i \
-              's|https://github.com/Strappazzon/drg-mint-notag|https://github.com/un-readable/drg-mint-notag-bypass|g' \
+              's|https://github.com/Strappazzon/drg-mint-notag|https://github.com/un-readable/drg-mint-notag-hrtf|g' \
               {} +
 
           # ── Patch 3: api.github.com update check URL ──────────────────────
           find . -type f -name "*.rs" \
             -exec sed -i \
-              's|api.github.com/repos/Strappazzon/drg-mint-notag|api.github.com/repos/un-readable/drg-mint-notag-bypass|g' \
+              's|api.github.com/repos/Strappazzon/drg-mint-notag|api.github.com/repos/un-readable/drg-mint-notag-hrtf|g' \
               {} +
 
           PATCH_NOTES="${PATCH_NOTES}\n- Self-update points to this repo"
@@ -454,7 +454,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ matrix.tag }}
-          name: mint-notag-bypass ${{ matrix.tag }}
+          name: mint-notag-hrtf ${{ matrix.tag }}
           body_path: ${{ runner.temp }}/notes.md
           make_latest: ${{ matrix.tag == needs.check-and-build.outputs.newest }}
           files: dist/*
